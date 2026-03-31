@@ -76,8 +76,7 @@ define(["sugar-web/activity/activity", "sugar-web/env", "sugar-web/graphics/pres
                 lines: state.lines,
                 fills: state.fills,
                 chainDots: state.chainDots,
-                connectedTargetIndex: state.connectedTargetIndex,
-                won: copyState.won
+                connectedTargetIndex: state.connectedTargetIndex
             });
             if (undoStack.length === 0 || undoStack[undoStack.length - 1] !== currentState) {
                 undoStack.push(currentState);
@@ -95,21 +94,9 @@ define(["sugar-web/activity/activity", "sugar-web/env", "sugar-web/graphics/pres
         let myNetworkId = 'local';
         let aiButton = document.getElementById('ai-toggle-button');
 
-        // ─── Copy Mode State ──────────────────────────────────────────────────────
-        const copyState = {
-            active: false,
-            targetPoints: [],   // The template points (scaled to right half)
-            targetLines: [],    // Lines connecting the template points
-            targetColor: '#ff8c00',
-            templateName: '',
-            dividerX: 0,        // x coordinate of the center divider
-            won: false           // track if user already achieved 100%
-        };
 
-        const COPY_COLORS = [
-            '#1a6ef5', '#f51a1a', '#1af53b', '#f5d41a',
-            '#9c1af5', '#1af5e3', '#f51a9c', '#ff8c00'
-        ];
+
+
 
         // ─── Canvas resize ────────────────────────────────────────────────────────
         function resizeCanvas() {
@@ -232,18 +219,7 @@ define(["sugar-web/activity/activity", "sugar-web/env", "sugar-web/graphics/pres
                     hit = ownTerritory;
                     trail.push({ x: hit.x, y: hit.y });
                 }
-            } else if (state.mode === 'copy') {
-                // Copy mode: restrict to left half
-                if (raw.x > copyState.dividerX) return;
-                if (!hit) {
-                    const s = snapToGrid(raw.x, raw.y);
-                    if (s.x >= copyState.dividerX) return;
-                    hit = state.dots.find(d => d.x === s.x && d.y === s.y);
-                    if (!hit) {
-                        hit = { x: s.x, y: s.y };
-                        state.dots.push(hit);
-                    }
-                }
+
             } else {
                 // Draw mode logic
                 if (!hit) {
@@ -330,15 +306,7 @@ define(["sugar-web/activity/activity", "sugar-web/env", "sugar-web/graphics/pres
                         target = { x: s.x, y: s.y };
                     }
                 }
-            } else if (state.mode === 'copy') {
-                // Copy mode: restrict to left half
-                if (raw.x > copyState.dividerX) return;
-                if (!target) {
-                    const s = snapToGrid(raw.x, raw.y);
-                    if (s.x < copyState.dividerX && Math.hypot(s.x - raw.x, s.y - raw.y) < SNAP_RADIUS) {
-                        target = { x: s.x, y: s.y };
-                    }
-                }
+
             } else {
                 // Draw mode logic
                 // If an empty grid spot is swept near, make it a target dot
@@ -1152,13 +1120,7 @@ define(["sugar-web/activity/activity", "sugar-web/env", "sugar-web/graphics/pres
                 drawGridDots(); // Draw dots over the territories so it's clear
                 drawGameTrails(); // Draw the active lines
                 updateGameProgressBar();
-            } else if (state.mode === 'copy') {
-                drawCopyModeSplit();
-                drawFills();       // Fill underneath
-                drawGridDots();    // Dots on top of fill
-                drawLines();       // Lines cover dots they pass through
-                drawGhost();
-                updateCopyProgressBar();
+
             } else {
                 drawGridDots();
                 drawFills();
@@ -1168,207 +1130,11 @@ define(["sugar-web/activity/activity", "sugar-web/env", "sugar-web/graphics/pres
             }
         }
 
-        function drawCopyModeSplit() {
-            if (!copyState.active) return;
-            const dpr = window.devicePixelRatio || 1;
-            const w = canvas.width / dpr;
-            const h = canvas.height / dpr;
-            const midX = copyState.dividerX;
 
-            // Draw divider line
-            ctx.save();
-            ctx.strokeStyle = '#555';
-            ctx.lineWidth = 3;
-            ctx.setLineDash([10, 6]);
-            ctx.beginPath();
-            ctx.moveTo(midX, 0);
-            ctx.lineTo(midX, h);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.restore();
 
-            // Label left and right
-            ctx.save();
-            ctx.fillStyle = 'rgba(0,0,0,0.25)';
-            ctx.font = 'bold 18px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('YOUR DRAWING', midX / 2, 30);
-            ctx.fillText('REPLICATE THIS', midX + midX / 2, 30);
-            ctx.restore();
 
-            // Draw the target shape as a solid filled painting on the right half
-            if (copyState.targetPoints.length > 2) {
-                ctx.save();
 
-                // 1. Solid opaque fill
-                ctx.beginPath();
-                ctx.moveTo(copyState.targetPoints[0].x, copyState.targetPoints[0].y);
-                copyState.targetPoints.forEach(p => ctx.lineTo(p.x, p.y));
-                ctx.closePath();
-                ctx.fillStyle = copyState.targetColor;
-                ctx.fill();
 
-                // 2. Border outline (same color as fill)
-                ctx.lineWidth = 4;
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                ctx.strokeStyle = copyState.targetColor;
-                ctx.stroke();
-
-                ctx.restore();
-            }
-
-            // Draw a START DOT on the left side at the mirrored first target point
-            if (copyState.targetPoints.length > 0 && state.lines.length === 0) {
-                const startX = copyState.targetPoints[0].x - midX;
-                const startY = copyState.targetPoints[0].y;
-                ctx.save();
-                // Start dot matching the target painting color
-                ctx.fillStyle = copyState.targetColor;
-                ctx.beginPath();
-                ctx.arc(startX, startY, 8, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.strokeStyle = '#fff';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                // Label
-                ctx.fillStyle = copyState.targetColor;
-                ctx.font = 'bold 12px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('START', startX, startY + 20); // Beneath the dot
-                ctx.restore();
-            }
-        }
-
-        function initCopyMode() {
-            copyState.active = true;
-            const dpr = window.devicePixelRatio || 1;
-            const w = canvas.width / dpr;
-            const h = canvas.height / dpr;
-
-            // Ensure the split divider is perfectly aligned with the grid
-            const midX = Math.round((w / 2) / GRID_SPACING) * GRID_SPACING;
-            copyState.dividerX = midX;
-
-            // Simple shapes using only neighboring grid steps (no diagonal jumps)
-            // Each shape is defined in grid-unit offsets from origin (0,0)
-            const G = GRID_SPACING;
-            const simpleShapes = [
-                { name: 'Square', pts: [{ x: 0, y: 0 }, { x: G * 3, y: 0 }, { x: G * 3, y: G * 3 }, { x: 0, y: G * 3 }, { x: 0, y: 0 }] },
-                { name: 'Rectangle', pts: [{ x: 0, y: 0 }, { x: G * 4, y: 0 }, { x: G * 4, y: G * 2 }, { x: 0, y: G * 2 }, { x: 0, y: 0 }] },
-                { name: 'L-Shape', pts: [{ x: 0, y: 0 }, { x: G * 2, y: 0 }, { x: G * 2, y: G }, { x: G, y: G }, { x: G, y: G * 3 }, { x: 0, y: G * 3 }, { x: 0, y: 0 }] },
-                { name: 'T-Shape', pts: [{ x: 0, y: 0 }, { x: G * 4, y: 0 }, { x: G * 4, y: G }, { x: G * 3, y: G }, { x: G * 3, y: G * 3 }, { x: G, y: G * 3 }, { x: G, y: G }, { x: 0, y: G }, { x: 0, y: 0 }] },
-                { name: 'U-Shape', pts: [{ x: 0, y: 0 }, { x: G, y: 0 }, { x: G, y: G * 2 }, { x: G * 3, y: G * 2 }, { x: G * 3, y: 0 }, { x: G * 4, y: 0 }, { x: G * 4, y: G * 3 }, { x: 0, y: G * 3 }, { x: 0, y: 0 }] },
-                { name: 'Cross', pts: [{ x: G, y: 0 }, { x: G * 2, y: 0 }, { x: G * 2, y: G }, { x: G * 3, y: G }, { x: G * 3, y: G * 2 }, { x: G * 2, y: G * 2 }, { x: G * 2, y: G * 3 }, { x: G, y: G * 3 }, { x: G, y: G * 2 }, { x: 0, y: G * 2 }, { x: 0, y: G }, { x: G, y: G }, { x: G, y: 0 }] },
-                { name: 'Steps', pts: [{ x: 0, y: 0 }, { x: G * 2, y: 0 }, { x: G * 2, y: G }, { x: G * 3, y: G }, { x: G * 3, y: G * 2 }, { x: G * 4, y: G * 2 }, { x: G * 4, y: G * 3 }, { x: 0, y: G * 3 }, { x: 0, y: 0 }] }
-            ];
-
-            // Pick random shape and color
-            const chosen = simpleShapes[Math.floor(Math.random() * simpleShapes.length)];
-            copyState.templateName = chosen.name;
-            copyState.targetColor = COPY_COLORS[Math.floor(Math.random() * COPY_COLORS.length)];
-
-            // Center the shape on the right half
-            let sMinX = Infinity, sMinY = Infinity, sMaxX = -Infinity, sMaxY = -Infinity;
-            chosen.pts.forEach(p => {
-                if (p.x < sMinX) sMinX = p.x;
-                if (p.y < sMinY) sMinY = p.y;
-                if (p.x > sMaxX) sMaxX = p.x;
-                if (p.y > sMaxY) sMaxY = p.y;
-            });
-            const shapeW = sMaxX - sMinX;
-            const shapeH = sMaxY - sMinY;
-            const centerRightX = midX + (w - midX) / 2;
-            const centerY = h / 2;
-            const baseX = Math.round((centerRightX - shapeW / 2) / GRID_SPACING) * GRID_SPACING;
-            const baseY = Math.round((centerY - shapeH / 2) / GRID_SPACING) * GRID_SPACING;
-
-            copyState.targetPoints = chosen.pts.map(p => ({
-                x: baseX + p.x,
-                y: baseY + p.y
-            }));
-
-            // Build lines from consecutive points, interpolating intermediate segments
-            copyState.targetLines = [];
-            for (let i = 0; i < copyState.targetPoints.length - 1; i++) {
-                const p1 = copyState.targetPoints[i];
-                const p2 = copyState.targetPoints[i + 1];
-
-                const dx = p2.x - p1.x;
-                const dy = p2.y - p1.y;
-                const dist = Math.hypot(dx, dy);
-                const steps = Math.round(dist / GRID_SPACING);
-
-                if (steps > 0) {
-                    for (let s = 0; s < steps; s++) {
-                        copyState.targetLines.push({
-                            x1: p1.x + (dx / steps) * s,
-                            y1: p1.y + (dy / steps) * s,
-                            x2: p1.x + (dx / steps) * (s + 1),
-                            y2: p1.y + (dy / steps) * (s + 1)
-                        });
-                    }
-                }
-            }
-        }
-
-        function updateCopyProgressBar() {
-            if (!copyState.active || copyState.targetLines.length === 0) return;
-
-            const bar = document.getElementById('copy-progress-bar');
-            if (!bar) return;
-
-            const dpr = window.devicePixelRatio || 1;
-            const w = canvas.width / dpr;
-            const midX = copyState.dividerX;
-
-            // For each target line on the right, check if user drew a matching
-            // line on the left (right coords minus midX = expected left coords)
-            const targetCount = copyState.targetLines.length;
-            let matchedCount = 0;
-            const tolerance = GRID_SPACING * 0.4; // Strict tolerance to avoid matching distant lines
-
-            for (const tLine of copyState.targetLines) {
-                const expectedX1 = tLine.x1 - midX;
-                const expectedY1 = tLine.y1;
-                const expectedX2 = tLine.x2 - midX;
-                const expectedY2 = tLine.y2;
-
-                const matched = state.lines.some(uLine => {
-                    // Check both orientations of the user's line
-                    const d1a = Math.hypot(uLine.x1 - expectedX1, uLine.y1 - expectedY1);
-                    const d1b = Math.hypot(uLine.x2 - expectedX2, uLine.y2 - expectedY2);
-                    const d2a = Math.hypot(uLine.x1 - expectedX2, uLine.y1 - expectedY2);
-                    const d2b = Math.hypot(uLine.x2 - expectedX1, uLine.y2 - expectedY1);
-                    return (d1a < tolerance && d1b < tolerance) || (d2a < tolerance && d2b < tolerance);
-                });
-
-                if (matched) matchedCount++;
-            }
-
-            const percent = Math.min(100, Math.round((matchedCount / targetCount) * 100));
-            bar.style.width = percent + '%';
-            bar.style.backgroundColor = copyState.targetColor;
-
-            if (percent >= 100 && !copyState.won) {
-                bar.innerText = '100% \u2728 Perfect Match!';
-                copyState.won = true;
-                // Fire confetti!
-                const confettiCanvas = document.getElementById('confetti-canvas');
-                if (confettiCanvas && typeof confetti !== 'undefined') {
-                    const myConfetti = confetti.create(confettiCanvas, { resize: true, useWorker: true });
-                    myConfetti({
-                        particleCount: 150,
-                        spread: 120,
-                        origin: { x: 0.5, y: 0.6 }
-                    });
-                    setTimeout(() => { confetti.reset(); }, 4000);
-                }
-            } else if (percent < 100) {
-                bar.innerText = percent + '% matched';
-                copyState.won = false;
-            }
-        }
 
         function updateGameProgressBar() {
             const dpr = window.devicePixelRatio || 1;
@@ -1486,8 +1252,7 @@ define(["sugar-web/activity/activity", "sugar-web/env", "sugar-web/graphics/pres
                 const progressContainer = document.getElementById('game-progress-container');
                 if (progressContainer) progressContainer.style.display = (modeName === 'game') ? 'flex' : 'none';
 
-                const copyProgressContainer = document.getElementById('copy-progress-container');
-                if (copyProgressContainer) copyProgressContainer.style.display = (modeName === 'copy') ? 'flex' : 'none';
+
 
                 if (aiButton) {
                     if (modeName !== 'game') {
@@ -1504,14 +1269,14 @@ define(["sugar-web/activity/activity", "sugar-web/env", "sugar-web/graphics/pres
 
                 const undoBtn = document.getElementById('undo-button');
                 const clearBtn = document.getElementById('clear-button');
-                if (undoBtn) undoBtn.style.display = (modeName === 'copy' || modeName === 'draw' || modeName === 'number') ? 'inline-block' : 'none';
-                if (clearBtn) clearBtn.style.display = (modeName === 'copy' || modeName === 'draw') ? 'inline-block' : 'none';
+                if (undoBtn) undoBtn.style.display = (modeName === 'draw' || modeName === 'number') ? 'inline-block' : 'none';
+                if (clearBtn) clearBtn.style.display = (modeName === 'draw') ? 'inline-block' : 'none';
 
                 if (mainModeBtn) {
                     if (modeName === 'draw') mainModeBtn.style.backgroundImage = 'url(icons/free-paint.svg)';
                     else if (modeName === 'number') mainModeBtn.style.backgroundImage = 'url(icons/challenge.svg)';
                     else if (modeName === 'game') mainModeBtn.style.backgroundImage = 'url(icons/difficulty.svg)';
-                    else if (modeName === 'copy') mainModeBtn.style.backgroundImage = 'url(icons/copy-mode.svg)';
+
                 }
             }
 
@@ -1534,14 +1299,8 @@ define(["sugar-web/activity/activity", "sugar-web/env", "sugar-web/graphics/pres
                     loadTemplate(0);
                 } else if (state.mode === 'game') {
                     initGameMode();
-                } else if (state.mode === 'copy') {
-                    copyState.active = false;
-                    copyState.won = false;
-                    if (gameState.aiInterval) clearInterval(gameState.aiInterval);
-                    gameState.active = false;
-                    initCopyMode();
+
                 } else {
-                    copyState.active = false;
                     if (gameState.aiInterval) clearInterval(gameState.aiInterval);
                     gameState.active = false;
                 }
@@ -1553,8 +1312,7 @@ define(["sugar-web/activity/activity", "sugar-web/env", "sugar-web/graphics/pres
             if (drawBtn) bindTap(drawBtn, (e) => setMode(e, 'icons/free-paint.svg', 'draw'));
             if (numBtn) bindTap(numBtn, (e) => setMode(e, 'icons/challenge.svg', 'number'));
             if (gameBtn) bindTap(gameBtn, (e) => setMode(e, 'icons/difficulty.svg', 'game'));
-            const replicateBtn = document.getElementById('copy-mode-button');
-            if (replicateBtn) bindTap(replicateBtn, (e) => setMode(e, 'icons/copy-mode.svg', 'copy'));
+
 
             // Undo button: restore last snapshot
             const undoButton = document.getElementById('undo-button');
@@ -1564,12 +1322,7 @@ define(["sugar-web/activity/activity", "sugar-web/env", "sugar-web/graphics/pres
                     const prev = JSON.parse(undoStack.pop());
                     state.dots = prev.dots; state.lines = prev.lines; state.fills = prev.fills; state.chainDots = prev.chainDots;
                     if (prev.connectedTargetIndex !== undefined) state.connectedTargetIndex = prev.connectedTargetIndex;
-                    if (prev.won !== undefined) copyState.won = prev.won;
-                    // Evaluate copy mode progress in case we undo a correct stroke
-                    if (state.mode === 'copy') {
-                        const bar = document.getElementById('copy-progress-bar');
-                        if (bar && state.lines.length === 0) { bar.style.width = '0%'; bar.innerText = '0%'; }
-                    }
+
                     render();
                     if (typeof broadcastStateUpdate === 'function') broadcastStateUpdate(true);
                 }
@@ -1588,12 +1341,7 @@ define(["sugar-web/activity/activity", "sugar-web/env", "sugar-web/graphics/pres
                 state.chainDots = [];
                 state.dragFrom = null;
                 state.dragPos = null;
-                if (state.mode === 'copy') {
-                    copyState.won = false;
-                    initCopyMode();
-                    const bar = document.getElementById('copy-progress-bar');
-                    if (bar) { bar.style.width = '0%'; bar.innerText = '0%'; }
-                }
+
                 render();
                 if (typeof broadcastStateUpdate === 'function') broadcastStateUpdate(true);
             });
